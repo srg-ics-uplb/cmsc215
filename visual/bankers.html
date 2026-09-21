@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Banker's algorithm simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF1F6; --panel:#FFFFFF; --ink:#1B2640; --muted:#56627A;
+  --line:#CBD4E1; --line-strong:#98A6BC;
+  --accent:#2446A6; --accent-ink:#FFFFFF; --accent-soft:#E3E9F8;
+  --focus:#D99A12; --focus-soft:#FBF0D3;
+  --safe:#1D7650; --safe-soft:#DDF1E6;
+  --bad:#B3261E; --bad-soft:#F9E0DD;
+  --sans:"Atkinson Hyperlegible","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#10172A; --panel:#18213A; --ink:#E4E9F2; --muted:#9AA6BD;
+    --line:#2B3754; --line-strong:#4A5878;
+    --accent:#88A4FF; --accent-ink:#10172A; --accent-soft:#223056;
+    --focus:#F2BE45; --focus-soft:#3A3120;
+    --safe:#5BCB95; --safe-soft:#173A2C;
+    --bad:#F48A80; --bad-soft:#40211F;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10172A; --panel:#18213A; --ink:#E4E9F2; --muted:#9AA6BD;
+  --line:#2B3754; --line-strong:#4A5878;
+  --accent:#88A4FF; --accent-ink:#10172A; --accent-soft:#223056;
+  --focus:#F2BE45; --focus-soft:#3A3120;
+  --safe:#5BCB95; --safe-soft:#173A2C;
+  --bad:#F48A80; --bad-soft:#40211F;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5}
+.wrap{max-width:1260px;margin:0 auto;padding:28px 20px 48px}
+header{margin-bottom:22px}
+h1{font-size:clamp(1.9rem,3.4vw,2.7rem);line-height:1.1;margin:0 0 8px;letter-spacing:-0.01em}
+header p{margin:0;color:var(--muted);max-width:72ch}
+h2{font-size:1.15rem;margin:0 0 12px}
+h3{font-size:1rem;margin:18px 0 8px}
+.grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:980px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.panel + .panel{margin-top:20px}
+.muted{color:var(--muted)}
+.small{font-size:.9rem}
+
+/* size controls */
+.config{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:end;margin-bottom:16px}
+.field{display:flex;flex-direction:column;gap:4px;font-size:.9rem;color:var(--muted)}
+.field input,.field select{font:inherit;font-family:var(--mono);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:5.5rem}
+.field select{width:auto;font-family:var(--sans)}
+
+/* buttons */
+button{font:inherit;font-size:.95rem;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink)}
+button:hover:not(:disabled){border-color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button.primary:hover:not(:disabled){filter:brightness(1.08)}
+button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px}
+
+/* vectors */
+.vectors{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.vecbox{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.vecbox .name{font-weight:700;font-size:.95rem;margin-bottom:6px;display:block}
+.vec{display:flex;gap:6px;flex-wrap:wrap}
+.vcell{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.8rem;color:var(--muted);border-radius:6px;padding:2px}
+.vcell input,.vcell output{font-family:var(--mono);font-size:1rem;color:var(--ink);width:3.2rem;text-align:center;padding:5px 2px;border:1px solid var(--line);border-radius:5px;background:var(--paper);display:block}
+.vcell output{background:transparent;border-style:dashed}
+.vcell.cmp-ok input,.vcell.cmp-ok output{background:var(--safe-soft);border-color:var(--safe);color:var(--safe);font-weight:600}
+.vcell.cmp-bad input,.vcell.cmp-bad output{background:var(--bad-soft);border-color:var(--bad);color:var(--bad);font-weight:600}
+.vcell.changed input,.vcell.changed output{background:var(--accent-soft);border-color:var(--accent)}
+#workBox{border-color:var(--accent)}
+#workBox .name{color:var(--accent)}
+
+/* matrix table */
+.table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:max-content}
+th,td{padding:0;text-align:center}
+thead th{font-size:.85rem;font-weight:700;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--muted)}
+thead tr:first-child th{color:var(--ink);font-size:.95rem}
+.gs{border-left:2px solid var(--line-strong)}
+tbody tr{border-bottom:1px solid var(--line)}
+tbody tr:last-child{border-bottom:0}
+th.proc{font-family:var(--mono);font-weight:600;padding:6px 12px;border-left:4px solid transparent}
+td input{font-family:var(--mono);font-size:.95rem;width:3rem;text-align:center;padding:6px 2px;margin:3px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--ink);-moz-appearance:textfield}
+td input::-webkit-outer-spin-button,td input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+td input:hover:not(:disabled),td input:focus{border-color:var(--line-strong);background:var(--paper)}
+td input:disabled{opacity:1;color:var(--ink)}
+td.need,td.fin{font-family:var(--mono);font-size:.95rem;padding:6px 10px;min-width:3rem}
+td.need{font-weight:600}
+td.fin{min-width:4.2rem}
+td.fin.t{color:var(--safe);font-weight:600}
+td.fin.f{color:var(--muted)}
+tr.current td,tr.current th{background:var(--focus-soft)}
+tr.current th.proc{border-left-color:var(--focus)}
+tr.done th.proc{color:var(--safe)}
+td.cmp-ok{background:var(--safe-soft)!important;color:var(--safe)}
+td.cmp-bad{background:var(--bad-soft)!important;color:var(--bad)}
+td.changed{background:var(--accent-soft)!important}
+td.invalid,td.invalid input{color:var(--bad);background:var(--bad-soft)}
+.note{margin:10px 0 0;font-size:.9rem;color:var(--muted)}
+.error-msg{color:var(--bad);font-weight:700;font-size:.92rem;margin:10px 0 0}
+
+/* request form */
+.req{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.req .vec{gap:6px}
+
+/* algorithm panel */
+.code{list-style:none;margin:0;padding:0;counter-reset:none}
+.code li{display:grid;grid-template-columns:2rem 1fr;gap:4px;padding:8px 10px;border-left:3px solid transparent;border-radius:0 6px 6px 0;font-size:.95rem;transition:background .2s}
+.code li .n{font-family:var(--mono);color:var(--muted);font-size:.85rem;padding-top:2px}
+.code li.active{background:var(--focus-soft);border-left-color:var(--focus)}
+.code li.active .n{color:var(--ink);font-weight:600}
+.code.dim{opacity:.5}
+.code var{font-style:italic;font-family:var(--sans)}
+.code code{font-family:var(--mono);font-size:.88em}
+.code-title{font-weight:700;margin:14px 0 4px;font-size:.95rem}
+.code-title:first-of-type{margin-top:0}
+
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 12px}
+.speed{display:flex;align-items:center;gap:8px;font-size:.9rem;color:var(--muted);margin-left:auto}
+.speed input{width:110px;accent-color:var(--accent)}
+.progress{font-family:var(--mono);font-size:.85rem;color:var(--muted)}
+
+.verdict{border-radius:8px;padding:10px 14px;font-weight:700;margin-bottom:12px;border:1px solid var(--line);background:var(--paper)}
+.verdict.good{background:var(--safe-soft);border-color:var(--safe);color:var(--safe)}
+.verdict.badv{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.verdict.idle{color:var(--muted);font-weight:400}
+
+.seq{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:34px;margin-bottom:12px}
+.seq .chip{font-family:var(--mono);font-weight:600;padding:4px 10px;border-radius:999px;background:var(--safe-soft);color:var(--safe);border:1px solid var(--safe)}
+.seq .arrow{color:var(--muted)}
+
+.log{list-style:none;margin:0;padding:0;max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:8px}
+.log li{padding:8px 12px;border-bottom:1px solid var(--line);font-size:.92rem;display:grid;grid-template-columns:5.2rem 1fr;gap:8px}
+.log li:last-child{border-bottom:0}
+.log li .tag{font-family:var(--mono);font-size:.78rem;color:var(--muted);padding-top:2px}
+.log li.cur{background:var(--focus-soft)}
+.log li.empty{display:block;color:var(--muted)}
+
+@media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media (max-width:560px){.wrap{padding:20px 12px 40px}.panel{padding:14px}.speed{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Banker's algorithm</h1>
+    <p>Deadlock avoidance as described in Silberschatz, Galvin and Gagne's <i>Operating System Concepts</i>. Edit the state, check whether it is safe, or submit a resource request and step through the algorithm line by line.</p>
+  </header>
+
+  <div class="grid">
+    <div>
+      <section class="panel" aria-labelledby="stateTitle">
+        <h2 id="stateTitle">System state</h2>
+        <div class="config">
+          <label class="field">Processes (n)<input id="nIn" type="number" min="1" max="10" value="5"></label>
+          <label class="field">Resource types (m)<input id="mIn" type="number" min="1" max="6" value="3"></label>
+          <div class="row-btns">
+            <button id="btnTextbook" type="button">Load textbook example</button>
+            <button id="btnRandom" type="button">Randomize</button>
+          </div>
+        </div>
+
+        <div class="vectors">
+          <div class="vecbox"><span class="name">Available</span><div class="vec" id="availVec"></div></div>
+          <div class="vecbox" id="workBox"><span class="name">Work</span><div class="vec" id="workVec"></div></div>
+          <div class="vecbox"><span class="name">Total instances</span><div class="vec" id="totalVec"></div></div>
+        </div>
+
+        <div class="table-scroll"><table id="matrix" aria-label="Allocation, Max and Need matrices"></table></div>
+        <p class="note">Need = Max − Allocation, computed automatically. Total instances = Available + the sum of each Allocation column.</p>
+        <p class="error-msg" id="errMsg" role="alert" hidden></p>
+      </section>
+
+      <section class="panel" aria-labelledby="reqTitle">
+        <h2 id="reqTitle">Resource request</h2>
+        <div class="req">
+          <label class="field">Process<select id="reqProc"></select></label>
+          <div class="field">Request vector<div class="vec" id="reqVec"></div></div>
+          <button id="btnRequest" class="primary" type="button">Submit request</button>
+        </div>
+        <p class="note">With the textbook example, try P1 requesting (1, 0, 2), which is granted. Then try P4 requesting (3, 3, 0) or P0 requesting (0, 2, 0).</p>
+      </section>
+    </div>
+
+    <div>
+      <section class="panel" aria-labelledby="algoTitle">
+        <h2 id="algoTitle">Algorithm</h2>
+        <div class="row-btns" style="margin-bottom:14px">
+          <button id="btnSafety" class="primary" type="button">Check safety</button>
+          <button id="btnReset" type="button" disabled>Stop and edit</button>
+        </div>
+
+        <div class="controls">
+          <button id="btnBack" type="button" disabled aria-label="Previous step">Back</button>
+          <button id="btnStep" type="button" disabled aria-label="Next step">Step</button>
+          <button id="btnPlay" type="button" disabled>Play</button>
+          <button id="btnEnd" type="button" disabled>Skip to result</button>
+          <span class="progress" id="progress"></span>
+          <label class="speed">Speed<input id="speed" type="range" min="150" max="2000" step="50" value="900" aria-label="Playback delay"></label>
+        </div>
+
+        <div class="verdict idle" id="verdict" aria-live="polite">Run a safety check or submit a request to begin.</div>
+
+        <div class="small muted" style="margin-bottom:4px">Safe sequence so far</div>
+        <div class="seq" id="seq"><span class="muted small">None yet</span></div>
+
+        <div class="code-title">Resource-request algorithm for process P<sub>i</sub></div>
+        <ol class="code" id="codeReq">
+          <li data-line="R1"><span class="n">1</span><span>If <var>Request<sub>i</sub></var> ≤ <var>Need<sub>i</sub></var>, go to step 2. Otherwise raise an error, since the process has exceeded its maximum claim.</span></li>
+          <li data-line="R2"><span class="n">2</span><span>If <var>Request<sub>i</sub></var> ≤ <var>Available</var>, go to step 3. Otherwise P<sub>i</sub> must wait, since the resources are not available.</span></li>
+          <li data-line="R3"><span class="n">3</span><span>Pretend to allocate: <code>Available = Available − Request<sub>i</sub></code>; <code>Allocation<sub>i</sub> = Allocation<sub>i</sub> + Request<sub>i</sub></code>; <code>Need<sub>i</sub> = Need<sub>i</sub> − Request<sub>i</sub></code>. Then run the safety algorithm.</span></li>
+          <li data-line="RG"><span class="n">✓</span><span>If the new state is safe, the transaction is completed and P<sub>i</sub> gets its resources.</span></li>
+          <li data-line="RW"><span class="n">✗</span><span>If it is unsafe, P<sub>i</sub> must wait and the old resource-allocation state is restored.</span></li>
+        </ol>
+
+        <div class="code-title">Safety algorithm</div>
+        <ol class="code" id="codeSafe">
+          <li data-line="S1"><span class="n">1</span><span>Let <var>Work</var> and <var>Finish</var> be vectors of length <i>m</i> and <i>n</i>. Initialize <code>Work = Available</code> and <code>Finish[i] = false</code> for every <i>i</i>.</span></li>
+          <li data-line="S2"><span class="n">2</span><span>Find an index <i>i</i> such that <code>Finish[i] == false</code> and <var>Need<sub>i</sub></var> ≤ <var>Work</var>. If no such <i>i</i> exists, go to step 4.</span></li>
+          <li data-line="S3"><span class="n">3</span><span><code>Work = Work + Allocation<sub>i</sub></code>; <code>Finish[i] = true</code>. Go to step 2.</span></li>
+          <li data-line="S4"><span class="n">4</span><span>If <code>Finish[i] == true</code> for all <i>i</i>, the system is in a safe state.</span></li>
+        </ol>
+        <p class="note">X ≤ Y means X[j] ≤ Y[j] for every resource type j.</p>
+
+        <h3>Trace</h3>
+        <ol class="log" id="log"><li class="empty">Steps will appear here.</li></ol>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ---------- state ----------
+  const TEXTBOOK = {
+    n:5, m:3,
+    avail:[3,3,2],
+    alloc:[[0,1,0],[2,0,0],[3,0,2],[2,1,1],[0,0,2]],
+    max:[[7,5,3],[3,2,2],[9,0,2],[2,2,2],[4,3,3]]
+  };
+  const clone = o => JSON.parse(JSON.stringify(o));
+  let S = clone(TEXTBOOK);
+  let reqProc = 1, reqVec = [1,0,2];
+  let run = null;      // {kind, steps, idx, outcome, commit, committed}
+  let timer = null;
+
+  // ---------- helpers ----------
+  const $ = s => document.querySelector(s);
+  const R = j => String.fromCharCode(65 + j);
+  const P = i => "P" + i;
+  const vs = v => "(" + v.join(", ") + ")";
+  const le = (a,b) => a.every((x,j) => x <= b[j]);
+  const add = (a,b) => a.map((x,j) => x + b[j]);
+  const sub = (a,b) => a.map((x,j) => x - b[j]);
+  const needOf = (max, alloc) => max.map((r,i) => r.map((x,j) => x - alloc[i][j]));
+  const failing = (a,b) => a.map((x,j) => x > b[j] ? R(j) : null).filter(Boolean);
+  const oks = (a,b) => a.map((x,j) => x <= b[j]);
+  const toInt = v => { const n = parseInt(v, 10); return isNaN(n) || n < 0 ? 0 : Math.min(n, 99); };
+
+  // ---------- safety algorithm (textbook) ----------
+  function safetyTrace(avail, alloc, need, snap){
+    const n = alloc.length, steps = [];
+    let work = avail.slice(), finish = Array(n).fill(false), seq = [];
+    const push = o => steps.push(Object.assign({work:work.slice(), finish:finish.slice(), seq:seq.slice(), snap}, o));
+
+    push({line:"S1", msg:`Initialize Work = Available = ${vs(work)} and Finish[i] = false for all ${n} processes.`});
+    let progress = true;
+    while (progress){
+      progress = false;
+      for (let i = 0; i < n; i++){
+        if (finish[i]) continue;
+        const ok = le(need[i], work);
+        push({line:"S2", row:i, hl:{where:"need", oks:oks(need[i], work)},
+          msg: ok
+            ? `${P(i)}: Finish is false and Need ${vs(need[i])} ≤ Work ${vs(work)}. ${P(i)} can finish.`
+            : `${P(i)}: Need ${vs(need[i])} ≤ Work ${vs(work)} fails on ${failing(need[i], work).join(", ")}. Skip it for now.`});
+        if (ok){
+          work = add(work, alloc[i]); finish[i] = true; seq.push(i);
+          push({line:"S3", row:i, released:true,
+            msg:`${P(i)} runs to completion and releases Allocation ${vs(alloc[i])}. Work = ${vs(work)}, Finish[${i}] = true.`});
+          progress = true;
+        }
+      }
+    }
+    const safe = finish.every(Boolean);
+    push({line:"S2", msg: safe
+      ? "Every process has Finish = true, so no index remains. Go to step 4."
+      : `No unfinished process has Need ≤ Work ${vs(work)}. Go to step 4.`});
+    const left = finish.map((f,i) => f ? null : P(i)).filter(Boolean);
+    push({line:"S4", verdict: safe ? "safe" : "unsafe",
+      msg: safe
+        ? `All processes can finish. The state is safe with sequence ⟨${seq.map(P).join(", ")}⟩.`
+        : `${left.join(", ")} cannot be guaranteed to finish. The state is unsafe.`});
+    return {steps, safe, seq};
+  }
+
+  // ---------- resource-request algorithm (textbook) ----------
+  function requestTrace(i, req){
+    const need = needOf(S.max, S.alloc);
+    const base = {avail:S.avail, alloc:S.alloc, need};
+    const steps = [];
+    const blank = {work:null, finish:null, seq:[]};
+
+    const ok1 = le(req, need[i]);
+    steps.push(Object.assign({line:"R1", row:i, snap:base, hl:{where:"need", oks:oks(req, need[i])},
+      msg: ok1
+        ? `Request ${vs(req)} ≤ Need of ${P(i)} ${vs(need[i])}. Go to step 2.`
+        : `Request ${vs(req)} exceeds ${P(i)}'s remaining need ${vs(need[i])} on ${failing(req, need[i]).join(", ")}. Error: ${P(i)} has exceeded its maximum claim.`,
+      verdict: ok1 ? undefined : "error"}, blank));
+    if (!ok1) return {steps, outcome:"error"};
+
+    const ok2 = le(req, S.avail);
+    steps.push(Object.assign({line:"R2", row:i, snap:base, hl:{where:"avail", oks:oks(req, S.avail)},
+      msg: ok2
+        ? `Request ${vs(req)} ≤ Available ${vs(S.avail)}. Go to step 3.`
+        : `Request ${vs(req)} exceeds Available ${vs(S.avail)} on ${failing(req, S.avail).join(", ")}. ${P(i)} must wait.`,
+      verdict: ok2 ? undefined : "wait"}, blank));
+    if (!ok2) return {steps, outcome:"wait"};
+
+    const nAvail = sub(S.avail, req);
+    const nAlloc = S.alloc.map((r,k) => k === i ? add(r, req) : r.slice());
+    const nNeed = need.map((r,k) => k === i ? sub(r, req) : r.slice());
+    const snap = {avail:nAvail, alloc:nAlloc, need:nNeed};
+    steps.push(Object.assign({line:"R3", row:i, snap, changed:true,
+      msg:`Pretend to allocate. Available = ${vs(nAvail)}, Allocation of ${P(i)} = ${vs(nAlloc[i])}, Need of ${P(i)} = ${vs(nNeed[i])}. Now check whether this state is safe.`}, blank));
+
+    const t = safetyTrace(nAvail, nAlloc, nNeed, snap);
+    steps.push(...t.steps);
+    const last = t.steps[t.steps.length - 1];
+    if (t.safe){
+      steps.push({line:"RG", snap, work:last.work, finish:last.finish, seq:last.seq, verdict:"granted",
+        msg:`The new state is safe, so ${P(i)}'s request ${vs(req)} is granted immediately.`});
+    } else {
+      steps.push({line:"RW", snap:base, work:null, finish:null, seq:[], verdict:"denied",
+        msg:`The new state is unsafe, so ${P(i)} must wait. The old resource-allocation state is restored.`});
+    }
+    return {steps, outcome: t.safe ? "granted" : "denied", commit: t.safe ? {avail:nAvail, alloc:nAlloc} : null};
+  }
+
+  // ---------- DOM build ----------
+  const matrix = $("#matrix");
+  function build(){
+    const {n, m} = S;
+    let h = '<thead><tr><th rowspan="2" scope="col">Process</th>';
+    ["Allocation","Max","Need"].forEach(g => { h += `<th colspan="${m}" class="gs" scope="colgroup">${g}</th>`; });
+    h += '<th rowspan="2" scope="col" class="gs">Finish</th></tr><tr>';
+    for (let g = 0; g < 3; g++) for (let j = 0; j < m; j++) h += `<th scope="col"${j === 0 ? ' class="gs"' : ""}>${R(j)}</th>`;
+    h += "</tr></thead><tbody>";
+    for (let i = 0; i < n; i++){
+      h += `<tr data-row="${i}"><th scope="row" class="proc">${P(i)}</th>`;
+      ["alloc","max"].forEach(k => {
+        for (let j = 0; j < m; j++){
+          h += `<td${j === 0 ? ' class="gs"' : ""} data-cell="${k}-${i}-${j}"><input type="number" min="0" max="99" inputmode="numeric" data-k="${k}" data-i="${i}" data-j="${j}" aria-label="${k === "alloc" ? "Allocation" : "Max"} ${P(i)} ${R(j)}"></td>`;
+        }
+      });
+      for (let j = 0; j < m; j++) h += `<td class="need${j === 0 ? " gs" : ""}" data-cell="need-${i}-${j}"></td>`;
+      h += `<td class="fin gs" data-cell="fin-${i}">—</td></tr>`;
+    }
+    matrix.innerHTML = h + "</tbody>";
+
+    $("#availVec").innerHTML = S.avail.map((_,j) =>
+      `<label class="vcell" data-cell="avail-${j}">${R(j)}<input type="number" min="0" max="99" inputmode="numeric" data-k="avail" data-j="${j}" aria-label="Available ${R(j)}"></label>`).join("");
+    $("#workVec").innerHTML = S.avail.map((_,j) =>
+      `<span class="vcell">${R(j)}<output data-cell="work-${j}">—</output></span>`).join("");
+    $("#totalVec").innerHTML = S.avail.map((_,j) =>
+      `<span class="vcell">${R(j)}<output data-cell="total-${j}"></output></span>`).join("");
+
+    const sel = $("#reqProc");
+    sel.innerHTML = Array.from({length:n}, (_,i) => `<option value="${i}">${P(i)}</option>`).join("");
+    if (reqProc >= n) reqProc = 0;
+    sel.value = reqProc;
+    reqVec = Array.from({length:m}, (_,j) => reqVec[j] ?? 0);
+    $("#reqVec").innerHTML = reqVec.map((v,j) =>
+      `<label class="vcell">${R(j)}<input type="number" min="0" max="99" inputmode="numeric" data-k="req" data-j="${j}" value="${v}" aria-label="Request ${R(j)}"></label>`).join("");
+    render();
+  }
+
+  // ---------- validation ----------
+  function problems(){
+    const msgs = [];
+    for (let i = 0; i < S.n; i++) for (let j = 0; j < S.m; j++){
+      if (S.alloc[i][j] > S.max[i][j]) msgs.push(`${P(i)} has Allocation ${S.alloc[i][j]} of ${R(j)} but Max is only ${S.max[i][j]}.`);
+    }
+    return msgs;
+  }
+
+  // ---------- render ----------
+  const cell = key => document.querySelector(`[data-cell="${key}"]`);
+  function currentVerdict(){
+    if (!run) return null;
+    for (let k = run.idx; k >= 0; k--) if (run.steps[k].verdict) return run.steps[k].verdict;
+    return null;
+  }
+
+  function render(){
+    const step = run ? run.steps[run.idx] : null;
+    const liveNeed = needOf(S.max, S.alloc);
+    const snap = step && step.snap ? step.snap : {avail:S.avail, alloc:S.alloc, need:liveNeed};
+    const locked = !!run;
+    const bad = locked ? [] : problems();
+
+    // matrix
+    matrix.querySelectorAll("input").forEach(inp => {
+      const {k} = inp.dataset, i = +inp.dataset.i, j = +inp.dataset.j;
+      const v = k === "alloc" ? snap.alloc[i][j] : S.max[i][j];
+      if (locked || document.activeElement !== inp) inp.value = v;
+      inp.disabled = locked;
+      const td = inp.parentElement;
+      td.classList.toggle("invalid", !locked && S.alloc[i][j] > S.max[i][j]);
+      td.classList.remove("changed");
+    });
+    for (let i = 0; i < S.n; i++){
+      const tr = matrix.querySelector(`tr[data-row="${i}"]`);
+      tr.classList.toggle("current", !!step && step.row === i);
+      tr.classList.toggle("done", !!(step && step.finish && step.finish[i]));
+      for (let j = 0; j < S.m; j++){
+        const td = cell(`need-${i}-${j}`);
+        const val = snap.need[i][j];
+        td.textContent = val;
+        td.className = "need" + (j === 0 ? " gs" : "");
+        if (val < 0) td.classList.add("invalid");
+        if (step && step.row === i && step.hl && step.hl.where === "need") td.classList.add(step.hl.oks[j] ? "cmp-ok" : "cmp-bad");
+        if (step && step.row === i && step.changed) td.classList.add("changed");
+        const ta = cell(`alloc-${i}-${j}`);
+        if (step && step.row === i && (step.released || step.changed)) ta.classList.add("changed");
+      }
+      const f = cell(`fin-${i}`);
+      if (step && step.finish){ f.textContent = step.finish[i] ? "true" : "false"; f.className = "fin gs " + (step.finish[i] ? "t" : "f"); }
+      else { f.textContent = "—"; f.className = "fin gs f"; }
+    }
+
+    // vectors
+    for (let j = 0; j < S.m; j++){
+      const lab = cell(`avail-${j}`), inp = lab.querySelector("input");
+      if (locked || document.activeElement !== inp) inp.value = snap.avail[j];
+      inp.disabled = locked;
+      lab.className = "vcell";
+      if (step && step.hl && step.hl.where === "avail") lab.classList.add(step.hl.oks[j] ? "cmp-ok" : "cmp-bad");
+      if (step && step.changed) lab.classList.add("changed");
+      cell(`work-${j}`).textContent = step && step.work ? step.work[j] : "—";
+      let tot = S.avail[j]; for (let i = 0; i < S.n; i++) tot += S.alloc[i][j];
+      cell(`total-${j}`).textContent = tot;
+    }
+
+    // pseudocode
+    document.querySelectorAll(".code li").forEach(li => li.classList.toggle("active", !!step && li.dataset.line === step.line));
+    $("#codeReq").classList.toggle("dim", !run || run.kind !== "request");
+
+    // sequence
+    const seqEl = $("#seq");
+    const seq = step ? step.seq : [];
+    seqEl.innerHTML = seq.length
+      ? seq.map((i,k) => (k ? '<span class="arrow" aria-hidden="true">›</span>' : "") + `<span class="chip">${P(i)}</span>`).join("")
+      : '<span class="muted small">None yet</span>';
+
+    // verdict
+    const v = currentVerdict(), vEl = $("#verdict");
+    const T = {
+      safe:["good", `Safe state. Safe sequence ⟨${seq.map(P).join(", ")}⟩.`],
+      unsafe:["badv", "Unsafe state. No safe sequence exists from here."],
+      granted:["good", `Request granted. ${run && run.committed ? "The new state has been applied." : ""}`],
+      denied:["badv", "Request denied. The process must wait; the old state is restored."],
+      error:["badv", "Error. The request exceeds the process's maximum claim."],
+      wait:["badv", "Process must wait. Not enough resources are available."]
+    };
+    if (v){ vEl.className = "verdict " + T[v][0]; vEl.textContent = T[v][1]; }
+    else if (run){ vEl.className = "verdict idle"; vEl.textContent = run.kind === "request" ? "Evaluating the request…" : "Searching for a safe sequence…"; }
+    else { vEl.className = "verdict idle"; vEl.textContent = "Run a safety check or submit a request to begin."; }
+
+    // log
+    const log = $("#log");
+    if (!run){ log.innerHTML = '<li class="empty">Steps will appear here.</li>'; }
+    else {
+      const TAG = {S1:"Safety 1",S2:"Safety 2",S3:"Safety 3",S4:"Safety 4",R1:"Request 1",R2:"Request 2",R3:"Request 3",RG:"Outcome",RW:"Outcome"};
+      log.innerHTML = run.steps.slice(0, run.idx + 1).map((s,k) =>
+        `<li class="${k === run.idx ? "cur" : ""}"><span class="tag">${TAG[s.line]}</span><span>${s.msg}</span></li>`).join("");
+      const cur = log.querySelector("li.cur"); if (cur) log.scrollTop = cur.offsetTop - log.clientHeight + cur.offsetHeight + 8;
+    }
+
+    // controls
+    const atEnd = run && run.idx >= run.steps.length - 1;
+    $("#btnBack").disabled = !run || run.idx === 0;
+    $("#btnStep").disabled = !run || atEnd;
+    $("#btnEnd").disabled = !run || atEnd;
+    $("#btnPlay").disabled = !run || atEnd;
+    $("#btnPlay").textContent = timer ? "Pause" : "Play";
+    $("#btnReset").disabled = !run;
+    $("#progress").textContent = run ? `${run.idx + 1} / ${run.steps.length}` : "";
+    const cfgLocked = locked;
+    ["#nIn","#mIn","#btnTextbook","#btnRandom","#reqProc"].forEach(s => $(s).disabled = cfgLocked);
+    document.querySelectorAll('#reqVec input').forEach(i => i.disabled = cfgLocked);
+    $("#btnSafety").disabled = bad.length > 0;
+    $("#btnRequest").disabled = bad.length > 0;
+
+    const err = $("#errMsg");
+    if (bad.length){ err.hidden = false; err.textContent = bad[0] + (bad.length > 1 ? ` (${bad.length - 1} more)` : "") + " Fix it to run the algorithm."; }
+    else err.hidden = true;
+  }
+
+  // ---------- playback ----------
+  function go(idx){
+    if (!run) return;
+    run.idx = Math.max(0, Math.min(idx, run.steps.length - 1));
+    if (run.idx === run.steps.length - 1){
+      stop();
+      if (run.outcome === "granted" && !run.committed){
+        S.avail = run.commit.avail; S.alloc = run.commit.alloc; run.committed = true;
+      }
+    }
+    render();
+  }
+  function stop(){ if (timer){ clearInterval(timer); timer = null; } }
+  function play(){
+    if (!run) return;
+    if (timer){ stop(); render(); return; }
+    timer = setInterval(() => go(run.idx + 1), +$("#speed").value);
+    render();
+  }
+  function startRun(kind, t){
+    stop();
+    run = {kind, steps:t.steps, idx:0, outcome:t.outcome || (t.safe ? "safe" : "unsafe"), commit:t.commit || null, committed:false};
+    render();
+  }
+
+  // ---------- events ----------
+  document.addEventListener("input", e => {
+    const t = e.target, k = t.dataset && t.dataset.k;
+    if (!k || run) return;
+    const j = +t.dataset.j, v = toInt(t.value);
+    if (k === "req"){ reqVec[j] = v; return; }
+    if (k === "avail") S.avail[j] = v;
+    else S[k][+t.dataset.i][j] = v;
+    render();
+  });
+  document.addEventListener("change", e => {
+    const t = e.target;
+    if (t.dataset && t.dataset.k && t.value === "") { t.value = 0; t.dispatchEvent(new Event("input", {bubbles:true})); }
+  });
+  $("#reqProc").addEventListener("change", e => { reqProc = +e.target.value; });
+
+  function resize(){
+    const n = Math.max(1, Math.min(10, toInt($("#nIn").value) || 1));
+    const m = Math.max(1, Math.min(6, toInt($("#mIn").value) || 1));
+    const grid = (M) => Array.from({length:n}, (_,i) => Array.from({length:m}, (_,j) => (M[i] && M[i][j] != null) ? M[i][j] : 0));
+    S = {n, m, avail:Array.from({length:m}, (_,j) => S.avail[j] ?? 0), alloc:grid(S.alloc), max:grid(S.max)};
+    build();
+  }
+  $("#nIn").addEventListener("change", resize);
+  $("#mIn").addEventListener("change", resize);
+
+  $("#btnTextbook").addEventListener("click", () => {
+    S = clone(TEXTBOOK); reqProc = 1; reqVec = [1,0,2];
+    $("#nIn").value = 5; $("#mIn").value = 3; build();
+  });
+  $("#btnRandom").addEventListener("click", () => {
+    const r = k => Math.floor(Math.random() * (k + 1));
+    S.max = S.max.map(row => row.map(() => r(9)));
+    S.alloc = S.max.map(row => row.map(x => r(Math.min(x, 4))));
+    S.avail = S.avail.map(() => r(5));
+    render();
+  });
+
+  $("#btnSafety").addEventListener("click", () => {
+    startRun("safety", safetyTrace(S.avail, S.alloc, needOf(S.max, S.alloc), null));
+  });
+  $("#btnRequest").addEventListener("click", () => {
+    reqProc = +$("#reqProc").value;
+    startRun("request", requestTrace(reqProc, reqVec.slice()));
+  });
+  $("#btnReset").addEventListener("click", () => { stop(); run = null; render(); });
+  $("#btnStep").addEventListener("click", () => { stop(); go(run.idx + 1); });
+  $("#btnBack").addEventListener("click", () => { stop(); go(run.idx - 1); });
+  $("#btnEnd").addEventListener("click", () => { stop(); go(run.steps.length - 1); });
+  $("#btnPlay").addEventListener("click", play);
+  $("#speed").addEventListener("input", () => { if (timer){ stop(); play(); } });
+
+  document.addEventListener("keydown", e => {
+    if (!run || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.key === "ArrowRight"){ stop(); go(run.idx + 1); e.preventDefault(); }
+    if (e.key === "ArrowLeft"){ stop(); go(run.idx - 1); e.preventDefault(); }
+  });
+
+  build();
+})();
+</script>
+</body>
+</html>
