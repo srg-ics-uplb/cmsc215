@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Disk scheduling visualizer</title>
+<style>
+  /* OSBC VizTools shared theme: identical in every visualization */
+  :root {
+    --bg: #eef2f6; --panel: #ffffff; --ink: #101c2b; --muted: #5a6879;
+    --line: #cbd5e1; --line-strong: #94a3b8; --soft: #f4f7fa;
+    --accent: #1d4ed8; --accent-ink: #ffffff; --accent-soft: #e0e8fb;
+    --focus: #b45309; --focus-soft: #fbeed9;
+    --safe: #0f766e; --safe-soft: #d9f0ec;
+    --bad: #b42318; --bad-soft: #fbe1de;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    color-scheme: light;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c131c; --panel: #121c28; --ink: #e6edf5; --muted: #93a3b5;
+      --line: #26364a; --line-strong: #3f5370; --soft: #0f1823;
+      --accent: #6ea0ff; --accent-ink: #08111f; --accent-soft: #1b2a4a;
+      --focus: #f5a524; --focus-soft: #3a2d15;
+      --safe: #2dd4bf; --safe-soft: #10332f;
+      --bad: #ff8a7a; --bad-soft: #40211f;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c131c; --panel: #121c28; --ink: #e6edf5; --muted: #93a3b5;
+    --line: #26364a; --line-strong: #3f5370; --soft: #0f1823;
+    --accent: #6ea0ff; --accent-ink: #08111f; --accent-soft: #1b2a4a;
+    --focus: #f5a524; --focus-soft: #3a2d15;
+    --safe: #2dd4bf; --safe-soft: #10332f;
+    --bad: #ff8a7a; --bad-soft: #40211f;
+    color-scheme: dark;
+  }
+  :root { --guide: color-mix(in srgb, var(--ink) 13%, transparent); }
+  .back { display: inline-block; margin-bottom: 10px; font-size: .85rem; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--accent); text-decoration: underline; }
+  .back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 20px 48px; }
+  header h1 { margin: 0 0 4px; font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.1rem); letter-spacing: -.02em; font-weight: 700; }
+  header p { margin: 0; color: var(--muted); max-width: 62ch; }
+
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; margin-top: 22px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .controls { position: sticky; top: 16px; }
+  @media (max-width: 900px) { .controls { position: static; } }
+  .controls h2, .block h2 { margin: 0 0 12px; font-size: 1rem; font-weight: 650; }
+
+  .field { margin-bottom: 14px; }
+  .field label, .field .lbl { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 5px; }
+  .field .hint { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+  input[type=text], input[type=number] {
+    width: 100%; padding: 9px 10px; font: inherit; font-family: var(--mono); font-size: .95rem;
+    color: var(--ink); background: var(--soft); border: 1px solid var(--line); border-radius: 7px;
+  }
+  input:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button { border: 0; background: var(--soft); color: var(--ink); padding: 8px 6px; font: inherit; font-size: .88rem; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .check { display: flex; gap: 8px; align-items: flex-start; font-size: .88rem; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  .btn {
+    font: inherit; font-size: .9rem; padding: 8px 14px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--soft); color: var(--ink);
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; min-width: 84px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .error { color: var(--bad); font-size: .85rem; min-height: 1.3em; margin: 0 0 10px; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .tabs button {
+    font: inherit; font-size: .9rem; padding: 7px 13px; border-radius: 7px; cursor: pointer;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+  }
+  .tabs button:hover { border-color: var(--accent); }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .algo-head { margin: 0 0 16px; }
+  .algo-head strong { font-size: 1.15rem; display: block; }
+  .algo-head span { color: var(--muted); }
+
+  .block { margin-top: 18px; }
+  .stage > .panel:first-of-type { margin-top: 0; }
+
+  .diagram { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
+  .diagram svg { display: block; min-width: 700px; width: 100%; height: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .8rem; color: var(--muted); margin: 10px 0 0; }
+  .legend i { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid; vertical-align: middle; margin-right: 6px; }
+  .legend b { display: inline-block; width: 9px; height: 9px; vertical-align: middle; margin-right: 6px; }
+
+  .playback { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .playback .spacer { flex: 1; }
+  .playback label { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .playback input[type=range] { accent-color: var(--accent); width: 110px; }
+
+  .order { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; align-items: center; }
+  .order li {
+    font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: .95rem;
+    padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--soft); color: var(--muted);
+  }
+  .order li.done { color: var(--ink); border-color: var(--safe); }
+  .order li.now { background: var(--safe); color: var(--accent-ink); border-color: var(--safe); font-weight: 700; }
+  .order li.sep { border: 0; background: none; padding: 0 2px; }
+  .order li.start { border-style: dashed; color: var(--accent); border-color: var(--accent); }
+
+  .total { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  .total .big { font-family: var(--mono); font-size: 2.2rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+  .total .sub { color: var(--muted); font-size: .88rem; }
+  .formula { font-family: var(--mono); font-size: .92rem; line-height: 1.9; overflow-wrap: anywhere; margin: 0 0 14px; }
+  .formula .t { padding: 1px 2px; border-radius: 3px; }
+  .formula .t.future { opacity: .35; }
+  .formula .t.skip { text-decoration: line-through; color: var(--muted); }
+  .formula .op { color: var(--muted); padding: 0 3px; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-weight: 600; color: var(--muted); font-size: .8rem; }
+  td.r, th.r { text-align: right; }
+  tr.future td { opacity: .38; }
+  tr.cur td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  td.skip { text-decoration: line-through; color: var(--muted); }
+  td.what { white-space: normal; min-width: 180px; }
+
+  .cmp button.rowbtn {
+    display: grid; grid-template-columns: 120px minmax(80px, 1fr) 150px; gap: 12px; align-items: center; width: 100%;
+    padding: 8px 10px; margin: 0 0 4px; background: none; border: 1px solid transparent; border-radius: 7px;
+    font: inherit; font-size: .88rem; color: var(--ink); cursor: pointer; text-align: left;
+  }
+  .cmp button.rowbtn:hover { border-color: var(--line); }
+  .cmp button.rowbtn[aria-current="true"] { border-color: var(--accent); background: var(--soft); }
+  .cmp .bar { height: 10px; border-radius: 5px; background: var(--line); position: relative; overflow: hidden; }
+  .cmp .bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 5px; }
+  .cmp .best i { background: var(--safe); }
+  .cmp .val { text-align: right; }
+  .cmp .val small { color: var(--muted); }
+  @media (max-width: 560px) { .cmp button.rowbtn { grid-template-columns: 96px 1fr 104px; gap: 8px; padding: 8px 4px; } }
+  .note { color: var(--muted); font-size: .82rem; margin: 10px 0 0; }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="back" href="index.html">OSBC VizTools index</a>
+    <h1>Disk scheduling visualizer</h1>
+    <p>Choose an algorithm, set the track queue and head position, and watch the head move across the tracks. The order of service and the seek count are worked out step by step.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel controls" aria-label="Inputs">
+      <h2>Inputs</h2>
+      <div class="field">
+        <label for="queue">Track queue</label>
+        <input id="queue" type="text" inputmode="numeric" value="10, 12, 7, 14, 2, 28" autocomplete="off" spellcheck="false">
+        <div class="hint">Separate tracks with commas or spaces.</div>
+      </div>
+      <div class="field">
+        <label for="head">Current head position</label>
+        <input id="head" type="number" value="9" step="1">
+      </div>
+      <div class="field">
+        <span class="lbl">Track range</span>
+        <div class="row2">
+          <input id="min" type="number" value="0" step="1" aria-label="Lowest track">
+          <input id="max" type="number" value="29" step="1" aria-label="Highest track">
+        </div>
+      </div>
+      <div class="field">
+        <span class="lbl">Direction</span>
+        <div class="seg" role="group" aria-label="Head direction">
+          <button type="button" id="dirUp" aria-pressed="true">Increasing</button>
+          <button type="button" id="dirDown" aria-pressed="false">Decreasing</button>
+        </div>
+        <div class="hint">Used by SCAN, N-Step SCAN, CSCAN, LOOK and CLOOK.</div>
+      </div>
+      <div class="field" id="nField" hidden>
+        <label for="nstep">Batch size (N)</label>
+        <input id="nstep" type="number" value="3" min="1" step="1">
+        <div class="hint">Requests are split into batches of N in queue order. Each batch is swept with SCAN before the next one starts.</div>
+      </div>
+      <div class="field" id="jumpField" hidden>
+        <label class="check"><input type="checkbox" id="countJump" checked>
+          <span>Count the return jump in the seek count</span></label>
+        <div class="hint">Textbooks differ on this. Turn it off to see the sweep distance only.</div>
+      </div>
+      <p class="error" id="error" role="alert"></p>
+      <button class="btn" type="button" id="example">Reset to example</button>
+    </aside>
+
+    <div class="stage">
+      <div class="panel">
+        <div class="tabs" role="tablist" aria-label="Algorithm" id="tabs"></div>
+        <div class="algo-head" id="algoHead"></div>
+
+        <div class="diagram"><div id="svgHost"></div></div>
+        <div class="legend">
+          <span><b style="background:var(--ink)"></b>Pending request</span>
+          <span><b style="background:var(--safe)"></b>Served request</span>
+          <span><i style="border-color:var(--accent)"></i>Seek to a request</span>
+          <span><i style="border-color:var(--focus)"></i>Seek to disk end</span>
+          <span><i style="border-color:var(--focus);border-top-style:dashed"></i>Jump</span>
+        </div>
+        <div class="playback">
+          <button class="btn primary" type="button" id="play">Play</button>
+          <button class="btn" type="button" id="back">Back</button>
+          <button class="btn" type="button" id="next">Next</button>
+          <button class="btn" type="button" id="reset">Restart</button>
+          <button class="btn" type="button" id="finish">Show all</button>
+          <span class="spacer"></span>
+          <label>Speed <input type="range" id="speed" min="0.5" max="3" step="0.25" value="1"></label>
+        </div>
+      </div>
+
+      <section class="panel block" aria-live="polite">
+        <h2>Order of service</h2>
+        <ol class="order" id="order"></ol>
+        <p class="note" id="algoNote"></p>
+      </section>
+
+      <section class="panel block" aria-live="polite">
+        <h2>Seek count</h2>
+        <div class="total"><span class="big" id="totalNum">0</span><span class="sub" id="totalSub"></span></div>
+        <p class="formula" id="formula"></p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th class="r">#</th><th>Move</th><th>Computation</th><th class="r">Seek</th><th class="r">Running total</th><th>What happens</th></tr></thead>
+            <tbody id="steps"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel block cmp">
+        <h2>All algorithms on this input</h2>
+        <div id="cmp"></div>
+        <p class="note">Select a row to switch to that algorithm.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var ALGOS = [
+    { id: "fcfs",  name: "FCFS",        full: "First Come, First Served", desc: "Serves requests in exactly the order they sit in the queue." },
+    { id: "sstf",  name: "SSTF",        full: "Shortest Seek Time First", desc: "Always serves the pending request closest to the current head position." },
+    { id: "scan",  name: "SCAN",        full: "Elevator", desc: "Moves in one direction serving requests, goes all the way to the end of the disk, then reverses and serves the rest." },
+    { id: "nstep", name: "N-Step SCAN", full: "SCAN on batches of N requests", desc: "Splits the queue into batches of N. Each batch is served with a full SCAN pass before the next batch begins." },
+    { id: "cscan", name: "CSCAN",       full: "Circular SCAN", desc: "Serves requests in one direction to the end of the disk, then jumps to the opposite end and sweeps in the same direction again." },
+    { id: "look",  name: "LOOK",        full: "SCAN that turns at the last request", desc: "Like SCAN, but reverses at the last request in the current direction instead of travelling to the disk end." },
+    { id: "clook", name: "CLOOK",       full: "Circular LOOK", desc: "Like CSCAN, but stops at the last request, then jumps to the farthest pending request on the other side and continues in the same direction." }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    queue: $("queue"), head: $("head"), min: $("min"), max: $("max"), nstep: $("nstep"),
+    dirUp: $("dirUp"), dirDown: $("dirDown"), nField: $("nField"), jumpField: $("jumpField"),
+    countJump: $("countJump"), error: $("error"), tabs: $("tabs"), algoHead: $("algoHead"),
+    svgHost: $("svgHost"), play: $("play"), back: $("back"), next: $("next"), reset: $("reset"),
+    finish: $("finish"), speed: $("speed"), order: $("order"), algoNote: $("algoNote"),
+    totalNum: $("totalNum"), totalSub: $("totalSub"), formula: $("formula"), steps: $("steps"),
+    cmp: $("cmp"), example: $("example")
+  };
+
+  var state = { algo: "fcfs", dir: 1, p: null, moves: [], k: 0, frac: 0, playing: false, last: 0, raf: 0 };
+
+  /* ---------- scheduling engine ---------- */
+
+  function compute(id, p) {
+    var pos = p.head, d = p.dir, moves = [];
+
+    function go(to, serve) {
+      if (to === pos && !serve) return;
+      moves.push({ from: pos, to: to, type: serve ? "serve" : "travel", serve: !!serve });
+      pos = to;
+    }
+    function jump(to, serve) {
+      moves.push({ from: pos, to: to, type: "jump", serve: !!serve });
+      pos = to;
+    }
+    function split(reqs, dd) {
+      var ahead = [], behind = [];
+      reqs.forEach(function (q) { ((q - pos) * dd >= 0 ? ahead : behind).push(q); });
+      ahead.sort(function (a, b) { return (a - b) * dd; });
+      return { ahead: ahead, behind: behind };
+    }
+    function scanBatch(reqs, dd) {
+      if (!reqs.length) return dd;
+      var s = split(reqs, dd);
+      s.ahead.forEach(function (q) { go(q, true); });
+      go(dd > 0 ? p.max : p.min, false);
+      s.behind.sort(function (a, b) { return (a - b) * -dd; }).forEach(function (q) { go(q, true); });
+      return -dd;
+    }
+
+    switch (id) {
+      case "fcfs":
+        p.queue.forEach(function (q) { go(q, true); });
+        break;
+      case "sstf": {
+        var rest = p.queue.slice();
+        while (rest.length) {
+          var bi = 0;
+          for (var i = 1; i < rest.length; i++) {
+            if (Math.abs(rest[i] - pos) < Math.abs(rest[bi] - pos)) bi = i;
+          }
+          go(rest.splice(bi, 1)[0], true);
+        }
+        break;
+      }
+      case "scan":
+        scanBatch(p.queue, d);
+        break;
+      case "nstep":
+        for (var s0 = 0; s0 < p.queue.length; s0 += p.n) {
+          d = scanBatch(p.queue.slice(s0, s0 + p.n), d);
+        }
+        break;
+      case "cscan": {
+        var sc = split(p.queue, d);
+        sc.ahead.forEach(function (q) { go(q, true); });
+        go(d > 0 ? p.max : p.min, false);
+        if (sc.behind.length) {
+          jump(d > 0 ? p.min : p.max, false);
+          sc.behind.sort(function (a, b) { return (a - b) * d; }).forEach(function (q) { go(q, true); });
+        }
+        break;
+      }
+      case "look": {
+        var sl = split(p.queue, d);
+        sl.ahead.forEach(function (q) { go(q, true); });
+        sl.behind.sort(function (a, b) { return (a - b) * -d; }).forEach(function (q) { go(q, true); });
+        break;
+      }
+      case "clook": {
+        var sk = split(p.queue, d);
+        sk.ahead.forEach(function (q) { go(q, true); });
+        if (sk.behind.length) {
+          sk.behind.sort(function (a, b) { return (a - b) * d; });
+          jump(sk.behind[0], true);
+          sk.behind.slice(1).forEach(function (q) { go(q, true); });
+        }
+        break;
+      }
+    }
+    return moves;
+  }
+
+  function counted(m, p) { return m.type !== "jump" || p.countJump; }
+  function dist(m) { return Math.abs(m.to - m.from); }
+  function totalOf(moves, p) {
+    return moves.reduce(function (s, m) { return s + (counted(m, p) ? dist(m) : 0); }, 0);
+  }
+  function term(m) { return "(" + Math.max(m.from, m.to) + "-" + Math.min(m.from, m.to) + ")"; }
+
+  /* ---------- input handling ---------- */
+
+  function readParams() {
+    var min = parseInt(el.min.value, 10), max = parseInt(el.max.value, 10), head = parseInt(el.head.value, 10);
+    var n = parseInt(el.nstep.value, 10);
+    if (isNaN(min) || isNaN(max) || isNaN(head)) return { error: "Enter whole numbers for the head position and track range." };
+    if (min >= max) return { error: "The lowest track must be smaller than the highest track." };
+    if (head < min || head > max) return { error: "Head position must be between " + min + " and " + max + "." };
+    var parts = el.queue.value.trim().split(/[\s,;]+/).filter(Boolean);
+    if (!parts.length) return { error: "Add at least one track to the queue." };
+    if (parts.length > 60) return { error: "Keep the queue to 60 requests or fewer." };
+    var queue = parts.map(Number);
+    for (var i = 0; i < queue.length; i++) {
+      if (!isFinite(queue[i]) || Math.floor(queue[i]) !== queue[i]) return { error: "\"" + parts[i] + "\" is not a whole track number." };
+      if (queue[i] < min || queue[i] > max) return { error: "Track " + queue[i] + " is outside the range " + min + "\u2013" + max + "." };
+    }
+    if (isNaN(n) || n < 1) return { error: "Batch size N must be 1 or more." };
+    return { queue: queue, head: head, min: min, max: max, dir: state.dir, n: n, countJump: el.countJump.checked };
+  }
+
+  function recompute(keepProgress) {
+    var p = readParams();
+    if (p.error) { el.error.textContent = p.error; return; }
+    el.error.textContent = "";
+    state.p = p;
+    state.moves = compute(state.algo, p);
+    stop();
+    if (!keepProgress) { state.k = state.moves.length; state.frac = 0; }
+    drawAll();
+  }
+
+  /* ---------- drawing ---------- */
+
+  function ease(t) { return t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+  function svgDiagram() {
+    var p = state.p, mv = state.moves, k = state.k, frac = state.frac;
+    var W = 920, M = 46, RH = 24, axisY = 70, sqY = 104, row0 = 136;
+    var H = row0 + mv.length * RH + 16;
+    var X = function (t) { return M + (t - p.min) / (p.max - p.min) * (W - 2 * M); };
+
+    var uniq = {};
+    [p.min, p.max, p.head].concat(p.queue).forEach(function (t) { uniq[t] = 1; });
+    var ticks = Object.keys(uniq).map(Number).sort(function (a, b) { return a - b; });
+
+    var total = {}, served = {};
+    p.queue.forEach(function (q) { total[q] = (total[q] || 0) + 1; });
+    for (var i = 0; i < k && i < mv.length; i++) { if (mv[i].serve) served[mv[i].to] = (served[mv[i].to] || 0) + 1; }
+
+    var headPos;
+    if (k >= mv.length) headPos = mv[mv.length - 1].to;
+    else { var cm = mv[k]; headPos = cm.from + (cm.to - cm.from) * ease(frac); }
+
+    var o = [];
+    o.push('<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Head movement for ' + algoById(state.algo).name + ', ' + mv.length + ' moves">');
+
+    // guides
+    ticks.forEach(function (t) {
+      o.push('<line x1="' + X(t) + '" x2="' + X(t) + '" y1="' + (sqY + 8) + '" y2="' + (H - 8) + '" stroke="var(--guide)" stroke-dasharray="2 4"/>');
+    });
+
+    // axis
+    o.push('<line x1="' + X(p.min) + '" x2="' + X(p.max) + '" y1="' + axisY + '" y2="' + axisY + '" stroke="var(--ink)" stroke-width="1.5"/>');
+    var lastX = [-99, -99, -99];
+    ticks.forEach(function (t) {
+      var x = X(t), isHead = t === p.head;
+      o.push('<line x1="' + x + '" x2="' + x + '" y1="' + (axisY - 8) + '" y2="' + (axisY + 8) + '" stroke="' + (isHead ? 'var(--accent)' : 'var(--ink)') + '" stroke-width="1.5"/>');
+      var row = -1;
+      for (var r = 0; r < 3; r++) { if (x - lastX[r] >= 24) { row = r; break; } }
+      if (row < 0) return;
+      lastX[row] = x;
+      o.push('<text x="' + x + '" y="' + (axisY - 16 - row * 15) + '" text-anchor="middle" font-size="12" font-family="var(--mono)" fill="' + (isHead ? 'var(--accent)' : 'var(--ink)') + '" font-weight="' + (isHead ? 700 : 400) + '">' + t + '</text>');
+    });
+
+    // request squares
+    ticks.forEach(function (t) {
+      if (!total[t]) return;
+      var done = (served[t] || 0) >= total[t];
+      o.push('<rect x="' + (X(t) - 5) + '" y="' + (sqY - 5) + '" width="10" height="10" fill="' + (done ? 'var(--safe)' : 'var(--ink)') + '"/>');
+      if (total[t] > 1) o.push('<text x="' + (X(t) + 9) + '" y="' + (sqY + 4) + '" font-size="10" font-family="var(--mono)" fill="var(--muted)">\u00d7' + total[t] + '</text>');
+    });
+
+    // head marker
+    var hx = X(headPos);
+    o.push('<polygon points="' + (hx - 6) + ',' + (sqY - 14) + ' ' + (hx + 6) + ',' + (sqY - 14) + ' ' + hx + ',' + (axisY + 6) + '" fill="var(--accent)"/>');
+
+    // move rows
+    mv.forEach(function (m, i) {
+      var y = row0 + i * RH, x0 = X(m.from), x1 = X(m.to);
+      var full = i < k, cur = i === k && frac > 0, future = !full && !cur;
+      var color = m.type === "serve" ? "var(--accent)" : "var(--focus)";
+      var dash = m.type === "jump" ? ' stroke-dasharray="6 4"' : '';
+      o.push('<text x="14" y="' + (y + 4) + '" font-size="11" font-family="var(--mono)" fill="var(--muted)" text-anchor="middle">' + (i + 1) + '</text>');
+      var s = x1 >= x0 ? 1 : -1;
+      if (future) {
+        if (x0 !== x1) o.push('<line x1="' + x0 + '" x2="' + x1 + '" y1="' + y + '" y2="' + y + '" stroke="' + color + '" stroke-width="1.5" opacity=".18"' + dash + '/>');
+        return;
+      }
+      var xe = full ? x1 : x0 + (x1 - x0) * ease(frac);
+      if (x0 === x1) {
+        o.push('<circle cx="' + x0 + '" cy="' + y + '" r="3.5" fill="' + color + '"/>');
+      } else {
+        o.push('<line x1="' + x0 + '" x2="' + (xe - s * 5) + '" y1="' + y + '" y2="' + y + '" stroke="' + color + '" stroke-width="2"' + dash + '/>');
+        o.push('<polygon points="' + xe + ',' + y + ' ' + (xe - s * 8) + ',' + (y - 4) + ' ' + (xe - s * 8) + ',' + (y + 4) + '" fill="' + color + '"/>');
+      }
+      if (full) {
+        var lab = dist(m) + (m.type === "jump" && !p.countJump ? " (not counted)" : "");
+        var wide = Math.abs(x1 - x0) > 44 + (lab.length > 3 ? 70 : 0);
+        var lx = wide ? (x0 + x1) / 2 : x1 + s * 12;
+        var anchor = wide ? "middle" : (s > 0 ? "start" : "end");
+        var ly = wide ? y - 6 : y + 4;
+        o.push('<text x="' + lx + '" y="' + ly + '" text-anchor="' + anchor + '" font-size="11" font-family="var(--mono)" fill="var(--muted)">' + lab + '</text>');
+      }
+    });
+
+    o.push('</svg>');
+    return o.join("");
+  }
+
+  function algoById(id) { return ALGOS.filter(function (a) { return a.id === id; })[0]; }
+
+  function remark(m, p) {
+    if (m.type === "serve") return "Serve track " + m.to;
+    if (m.type === "travel") return "Travel to " + (m.to === p.max ? "the highest" : "the lowest") + " track (" + m.to + "); no request there";
+    var back = m.serve ? "Jump to track " + m.to + " and serve it" : "Jump to the opposite end (track " + m.to + ")";
+    return back + (p.countJump ? "" : "; not counted");
+  }
+
+  function drawAll() {
+    var p = state.p, mv = state.moves, k = state.k;
+    var a = algoById(state.algo);
+
+    el.algoHead.innerHTML = "<strong>" + a.name + " <span style=\"font-weight:400\">\u2013 " + a.full + "</span></strong><span>" + a.desc + "</span>";
+    el.svgHost.innerHTML = svgDiagram();
+
+    // tabs
+    Array.prototype.forEach.call(el.tabs.children, function (b) {
+      b.setAttribute("aria-selected", b.dataset.id === state.algo ? "true" : "false");
+    });
+    el.nField.hidden = state.algo !== "nstep";
+    el.jumpField.hidden = !(state.algo === "cscan" || state.algo === "clook");
+
+    // order of service
+    var servedMoves = mv.filter(function (m) { return m.serve; });
+    var doneServed = mv.slice(0, k).filter(function (m) { return m.serve; }).length;
+    var oh = '<li class="start" title="Head start">' + p.head + '</li>';
+    servedMoves.forEach(function (m, i) {
+      var cls = i < doneServed - 1 ? "done" : (i === doneServed - 1 ? "now" : "");
+      oh += '<li class="sep" aria-hidden="true">\u2192</li><li class="' + cls + '">' + m.to + '</li>';
+    });
+    el.order.innerHTML = oh;
+    var ord = servedMoves.map(function (m) { return m.to; }).join(", ");
+    el.order.setAttribute("aria-label", "Order of service: " + ord);
+    el.algoNote.textContent = "Order of service: " + ord + ". The dashed chip is where the head starts.";
+
+    // seek count
+    var tot = totalOf(mv, p);
+    var shownTot = 0;
+    mv.slice(0, k).forEach(function (m) { if (counted(m, p)) shownTot += dist(m); });
+    el.totalNum.textContent = tot;
+    el.totalSub.textContent = "tracks traversed \u00b7 " + (tot / p.queue.length).toFixed(2) + " per request";
+
+    var f = "";
+    mv.forEach(function (m, i) {
+      var cls = "t" + (i >= k ? " future" : "") + (counted(m, p) ? "" : " skip");
+      f += (i ? '<span class="op">+</span>' : "") + '<span class="' + cls + '">' + term(m) + '</span>';
+    });
+    f += '<span class="op">=</span><strong>' + tot + '</strong>';
+    el.formula.innerHTML = f;
+
+    var rows = "", run = 0;
+    mv.forEach(function (m, i) {
+      var c = counted(m, p), d = dist(m);
+      if (c) run += d;
+      var cls = i >= k ? "future" : (i === k - 1 ? "cur" : "");
+      rows += '<tr class="' + cls + '"><td class="r num">' + (i + 1) + '</td>' +
+        '<td class="num">' + m.from + ' \u2192 ' + m.to + '</td>' +
+        '<td class="num' + (c ? "" : " skip") + '">' + term(m) + ' = ' + d + '</td>' +
+        '<td class="r num">' + (c ? d : 0) + '</td>' +
+        '<td class="r num">' + run + '</td>' +
+        '<td class="what">' + remark(m, p) + '</td></tr>';
+    });
+    el.steps.innerHTML = rows;
+
+    // comparison
+    var results = ALGOS.map(function (al) { return { a: al, t: totalOf(compute(al.id, p), p) }; });
+    var best = Math.min.apply(null, results.map(function (r) { return r.t; }));
+    var top = Math.max.apply(null, results.map(function (r) { return r.t; })) || 1;
+    el.cmp.innerHTML = results.map(function (r) {
+      return '<button type="button" class="rowbtn" data-id="' + r.a.id + '"' + (r.a.id === state.algo ? ' aria-current="true"' : '') + '>' +
+        '<span>' + r.a.name + '</span>' +
+        '<span class="bar' + (r.t === best ? " best" : "") + '"><i style="width:' + (r.t / top * 100).toFixed(1) + '%"></i></span>' +
+        '<span class="val num"><strong>' + r.t + '</strong> <small>' + (r.t === best ? "lowest" : "") + '</small></span></button>';
+    }).join("");
+
+    // playback buttons
+    el.play.textContent = state.playing ? "Pause" : (k >= mv.length ? "Replay" : "Play");
+    el.back.disabled = k === 0 && state.frac === 0;
+    el.next.disabled = k >= mv.length;
+  }
+
+  /* ---------- playback ---------- */
+
+  function stop() {
+    state.playing = false;
+    if (state.raf) cancelAnimationFrame(state.raf);
+    state.raf = 0;
+  }
+  function frame(ts) {
+    if (!state.playing) return;
+    var dt = ts - state.last; state.last = ts;
+    var m = state.moves[state.k];
+    var dur = (dist(m) === 0 ? 350 : 800) / parseFloat(el.speed.value);
+    state.frac += dt / dur;
+    if (state.frac >= 1) {
+      state.k++; state.frac = 0;
+      if (state.k >= state.moves.length) { stop(); drawAll(); return; }
+    }
+    el.svgHost.innerHTML = svgDiagram();
+    state.raf = requestAnimationFrame(frame);
+    if (state.frac === 0) drawAll();
+  }
+  function play() {
+    if (state.k >= state.moves.length) { state.k = 0; state.frac = 0; }
+    state.playing = true; state.last = performance.now();
+    drawAll();
+    state.raf = requestAnimationFrame(frame);
+  }
+
+  /* ---------- wiring ---------- */
+
+  ALGOS.forEach(function (a) {
+    var b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "tab"); b.dataset.id = a.id; b.textContent = a.name;
+    b.addEventListener("click", function () { state.algo = a.id; recompute(false); });
+    el.tabs.appendChild(b);
+  });
+  el.cmp.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-id]");
+    if (b) { state.algo = b.dataset.id; recompute(false); }
+  });
+
+  ["queue", "head", "min", "max", "nstep"].forEach(function (id) { el[id].addEventListener("input", function () { recompute(false); }); });
+  el.countJump.addEventListener("change", function () { recompute(false); });
+
+  function setDir(d) {
+    state.dir = d;
+    el.dirUp.setAttribute("aria-pressed", d > 0 ? "true" : "false");
+    el.dirDown.setAttribute("aria-pressed", d < 0 ? "true" : "false");
+    recompute(false);
+  }
+  el.dirUp.addEventListener("click", function () { setDir(1); });
+  el.dirDown.addEventListener("click", function () { setDir(-1); });
+
+  el.play.addEventListener("click", function () { if (state.playing) { stop(); drawAll(); } else play(); });
+  el.next.addEventListener("click", function () { stop(); if (state.k < state.moves.length) { state.k++; state.frac = 0; } drawAll(); });
+  el.back.addEventListener("click", function () { stop(); if (state.frac > 0) state.frac = 0; else if (state.k > 0) state.k--; drawAll(); });
+  el.reset.addEventListener("click", function () { stop(); state.k = 0; state.frac = 0; drawAll(); });
+  el.finish.addEventListener("click", function () { stop(); state.k = state.moves.length; state.frac = 0; drawAll(); });
+
+  el.example.addEventListener("click", function () {
+    el.queue.value = "10, 12, 7, 14, 2, 28"; el.head.value = 9; el.min.value = 0; el.max.value = 29;
+    el.nstep.value = 3; el.countJump.checked = true;
+    setDir(1);
+  });
+
+  recompute(false);
+})();
+</script>
+</body>
+</html>

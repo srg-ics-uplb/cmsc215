@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Memory allocation strategies</title>
+<style>
+  /* OSBC VizTools shared theme: identical in every visualization */
+  :root {
+    --bg: #eef2f6; --panel: #ffffff; --ink: #101c2b; --muted: #5a6879;
+    --line: #cbd5e1; --line-strong: #94a3b8; --soft: #f4f7fa;
+    --accent: #1d4ed8; --accent-ink: #ffffff; --accent-soft: #e0e8fb;
+    --focus: #b45309; --focus-soft: #fbeed9;
+    --safe: #0f766e; --safe-soft: #d9f0ec;
+    --bad: #b42318; --bad-soft: #fbe1de;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    color-scheme: light;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c131c; --panel: #121c28; --ink: #e6edf5; --muted: #93a3b5;
+      --line: #26364a; --line-strong: #3f5370; --soft: #0f1823;
+      --accent: #6ea0ff; --accent-ink: #08111f; --accent-soft: #1b2a4a;
+      --focus: #f5a524; --focus-soft: #3a2d15;
+      --safe: #2dd4bf; --safe-soft: #10332f;
+      --bad: #ff8a7a; --bad-soft: #40211f;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c131c; --panel: #121c28; --ink: #e6edf5; --muted: #93a3b5;
+    --line: #26364a; --line-strong: #3f5370; --soft: #0f1823;
+    --accent: #6ea0ff; --accent-ink: #08111f; --accent-soft: #1b2a4a;
+    --focus: #f5a524; --focus-soft: #3a2d15;
+    --safe: #2dd4bf; --safe-soft: #10332f;
+    --bad: #ff8a7a; --bad-soft: #40211f;
+    color-scheme: dark;
+  }
+  :root { --guide: color-mix(in srgb, var(--ink) 13%, transparent); }
+  .back { display: inline-block; margin-bottom: 10px; font-size: .85rem; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--accent); text-decoration: underline; }
+  .back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 20px 48px; }
+  header h1 { margin: 0 0 4px; font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.1rem); line-height: 1.15; letter-spacing: -.02em; font-weight: 700; }
+  header p { margin: 0; color: var(--muted); max-width: 62ch; }
+
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; margin-top: 22px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .block { margin-top: 18px; }
+  .controls { position: sticky; top: 16px; }
+  @media (max-width: 900px) { .controls { position: static; } }
+  h2 { margin: 0 0 12px; font-size: 1rem; font-weight: 650; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 5px; }
+  .field .hint { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+  input[type=text], input[type=number] {
+    width: 100%; padding: 9px 10px; font: inherit; font-family: var(--mono); font-size: .95rem;
+    color: var(--ink); background: var(--soft); border: 1px solid var(--line); border-radius: 7px;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn {
+    font: inherit; font-size: .9rem; padding: 8px 14px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line-strong); background: var(--soft); color: var(--ink);
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; min-width: 84px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .stack { display: grid; gap: 8px; }
+  .error { color: var(--bad); font-size: .85rem; min-height: 1.3em; margin: 0 0 10px; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .tabs button {
+    font: inherit; font-size: .9rem; padding: 7px 13px; border-radius: 7px; cursor: pointer;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+  }
+  .tabs button:hover { border-color: var(--accent); }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .algo-head { margin: 0 0 18px; }
+  .algo-head strong { font-size: 1.15rem; display: block; }
+  .algo-head span { color: var(--muted); }
+
+  .stage-label { font-weight: 650; font-size: .95rem; margin: 0 0 10px; }
+  .stage-sec { padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
+  .stage-sec + .stage-sec { margin-top: 12px; }
+  .list { display: flex; flex-wrap: wrap; row-gap: 14px; align-items: flex-start; min-height: 66px; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .node {
+    min-width: 68px; height: 44px; padding: 0 12px; display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; font-size: 1rem;
+    background: var(--panel); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 4px;
+  }
+  .cap { font-size: .72rem; color: var(--muted); min-height: 1.1em; white-space: nowrap; }
+  .link { flex: 0 0 auto; width: 26px; height: 2px; background: var(--ink); position: relative; margin: 21px 3px 0; }
+  .link::after {
+    content: ""; position: absolute; right: -1px; top: -4px; border-left: 7px solid var(--ink);
+    border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  }
+  .cell.small .node { opacity: .5; border-style: dashed; }
+  .cell.exam .node { border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-soft); }
+  .cell.exam .cap { color: var(--focus); font-weight: 600; }
+  .cell.best .node { border-color: var(--safe); background: var(--safe-soft); color: var(--safe); }
+  .cell.best .cap { color: var(--safe); font-weight: 600; }
+  .cell.chosen .node { border-width: 3px; }
+  .cell.rem .node { background: var(--ink); color: var(--bg); }
+  .cell.rem .cap { color: var(--ink); font-weight: 600; }
+  .cell.req .node { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .cell.req .cap { color: var(--accent); font-weight: 600; }
+  .placeholder { color: var(--muted); font-size: .9rem; align-self: center; }
+
+  .verdict { border-radius: 8px; padding: 10px 14px; font-weight: 600; margin-top: 12px; border: 1px solid var(--line); background: var(--soft); }
+  .verdict.good { background: var(--safe-soft); border-color: var(--safe); color: var(--safe); }
+  .verdict.badv { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+  .stats { margin: 10px 0 0; color: var(--muted); font-size: .85rem; }
+
+  .playback { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+  .playback .spacer { flex: 1; }
+  .playback label { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .playback input[type=range] { accent-color: var(--accent); width: 110px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .8rem; color: var(--muted); margin: 12px 0 0; }
+  .legend b { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 6px; border: 1.5px solid var(--ink); border-radius: 2px; }
+
+  ol.trace { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  ol.trace li { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: .9rem; }
+  ol.trace li:last-child { border-bottom: 0; }
+  ol.trace li .tag { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding-top: 2px; }
+  ol.trace li.future { opacity: .38; }
+  ol.trace li.cur { background: var(--focus-soft); }
+
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-weight: 600; color: var(--muted); font-size: .8rem; }
+  tr.pick { cursor: pointer; }
+  tr.pick:hover td { background: var(--soft); }
+  tr.sel td { background: var(--accent-soft); }
+  .note { color: var(--muted); font-size: .82rem; margin: 10px 0 0; }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="back" href="index.html">OSBC VizTools index</a>
+    <h1>Memory allocation strategies</h1>
+    <p>See how Best Fit, Worst Fit and First Fit choose a hole from the free list. Set the free list and the request size, then step through the search.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel controls" aria-label="Inputs">
+      <h2>Inputs</h2>
+      <div class="field">
+        <label for="holes">Free list (in K)</label>
+        <input id="holes" type="text" inputmode="numeric" value="22, 10, 5, 30, 7, 20" autocomplete="off" spellcheck="false">
+        <div class="hint">Hole sizes in list order, separated by commas or spaces.</div>
+      </div>
+      <div class="field">
+        <label for="req">Request for allocation (in K)</label>
+        <input id="req" type="number" value="15" min="1" step="1">
+      </div>
+      <p class="error" id="error" role="alert"></p>
+      <div class="stack">
+        <button class="btn" type="button" id="useResult">Use result as the free list</button>
+        <button class="btn" type="button" id="example">Reset to example</button>
+      </div>
+    </aside>
+
+    <div class="stage">
+      <div class="panel">
+        <div class="tabs" role="tablist" aria-label="Placement policy" id="tabs"></div>
+        <div class="algo-head" id="algoHead"></div>
+
+        <div class="stage-sec">
+          <p class="stage-label">Before allocation: free memory list</p>
+          <div class="list" id="before"></div>
+        </div>
+        <div class="stage-sec">
+          <p class="stage-label">Request for allocation</p>
+          <div class="list" id="request"></div>
+        </div>
+        <div class="stage-sec">
+          <p class="stage-label">After allocation: free memory list</p>
+          <div class="list" id="after"></div>
+        </div>
+        <div class="verdict" id="verdict" aria-live="polite"></div>
+        <p class="stats num" id="stats"></p>
+
+        <div class="legend">
+          <span><b style="border-color:var(--focus)"></b>Hole being examined</span>
+          <span><b style="border-color:var(--safe);background:var(--safe-soft)"></b>Best candidate / chosen hole</span>
+          <span><b style="border-style:dashed;opacity:.5"></b>Too small</span>
+          <span><b style="background:var(--ink)"></b>Remainder left after allocation</span>
+        </div>
+        <div class="playback">
+          <button class="btn primary" type="button" id="play">Play</button>
+          <button class="btn" type="button" id="back">Back</button>
+          <button class="btn" type="button" id="next">Next</button>
+          <button class="btn" type="button" id="reset">Restart</button>
+          <button class="btn" type="button" id="finish">Show result</button>
+          <span class="spacer"></span>
+          <label>Speed <input type="range" id="speed" min="0.5" max="3" step="0.25" value="1"></label>
+        </div>
+      </div>
+
+      <section class="panel block" aria-live="polite">
+        <h2>How the hole was chosen</h2>
+        <ol class="trace" id="trace"></ol>
+      </section>
+
+      <section class="panel block">
+        <h2>All policies on this input</h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Policy</th><th>Chosen hole</th><th>Remainder</th><th>Free list after</th></tr></thead>
+            <tbody id="cmp"></tbody>
+          </table>
+        </div>
+        <p class="note">Select a row to switch to that policy. Ties go to the hole that comes first in the list.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var POLICIES = [
+    { id: "best",  name: "Best Fit",  desc: "Scans the whole free list and takes the smallest hole that is large enough." },
+    { id: "worst", name: "Worst Fit", desc: "Scans the whole free list and takes the largest hole." },
+    { id: "first", name: "First Fit", desc: "Scans the free list from the start and takes the first hole that is large enough." }
+  ];
+
+  /*SOLVE-START*/
+  function solve(id, h, r) {
+    var steps = [], best = -1, last = -1;
+    for (var i = 0; i < h.length; i++) {
+      var fits = h[i] >= r, msg;
+      last = i;
+      if (!fits) {
+        msg = h[i] + " K is smaller than " + r + " K, so it is too small.";
+      } else if (id === "first") {
+        best = i;
+        msg = h[i] + " K is large enough. First Fit stops at the first hole that fits.";
+      } else if (id === "best") {
+        if (best === -1 || h[i] < h[best]) { best = i; msg = h[i] + " K fits and is the smallest fit so far."; }
+        else msg = h[i] + " K fits, but " + h[best] + " K is a tighter fit.";
+      } else {
+        if (best === -1 || h[i] > h[best]) { best = i; msg = h[i] + " K fits and is the largest hole so far."; }
+        else msg = h[i] + " K fits, but " + h[best] + " K is larger.";
+      }
+      steps.push({ i: i, best: best, msg: msg });
+      if (id === "first" && fits) break;
+    }
+    var fin;
+    if (best < 0) fin = "No hole is large enough for " + r + " K. The request cannot be satisfied and the free list is unchanged.";
+    else {
+      var rem = h[best] - r;
+      fin = "Allocate " + r + " K from the " + h[best] + " K hole. " +
+        (rem > 0 ? h[best] + " \u2212 " + r + " = " + rem + " K stays in the list." : "It fits exactly, so the hole is removed from the list.");
+    }
+    steps.push({ i: -1, best: best, final: true, scanned: last, msg: fin });
+    var after = h.slice();
+    if (best >= 0) { if (h[best] - r > 0) after[best] = h[best] - r; else after.splice(best, 1); }
+    return { steps: steps, chosen: best, rem: best >= 0 ? h[best] - r : 0, after: after };
+  }
+  /*SOLVE-END*/
+
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    holes: $("holes"), req: $("req"), error: $("error"), tabs: $("tabs"), algoHead: $("algoHead"),
+    before: $("before"), request: $("request"), after: $("after"), verdict: $("verdict"), stats: $("stats"),
+    play: $("play"), back: $("back"), next: $("next"), reset: $("reset"), finish: $("finish"), speed: $("speed"),
+    trace: $("trace"), cmp: $("cmp"), useResult: $("useResult"), example: $("example")
+  };
+  var state = { policy: "best", holes: [], r: 0, res: null, k: 0, timer: 0 };
+
+  function policyById(id) { return POLICIES.filter(function (p) { return p.id === id; })[0]; }
+
+  function readInputs() {
+    var parts = el.holes.value.trim().split(/[\s,;]+/).filter(Boolean);
+    if (!parts.length) return { error: "Add at least one hole to the free list." };
+    if (parts.length > 20) return { error: "Keep the free list to 20 holes or fewer." };
+    var holes = parts.map(Number);
+    for (var i = 0; i < holes.length; i++) {
+      if (!isFinite(holes[i]) || Math.floor(holes[i]) !== holes[i] || holes[i] < 1 || holes[i] > 9999)
+        return { error: "\"" + parts[i] + "\" is not a valid hole size. Use whole numbers from 1 to 9999." };
+    }
+    var r = parseInt(el.req.value, 10);
+    if (isNaN(r) || r < 1 || r > 9999) return { error: "The request must be a whole number from 1 to 9999." };
+    return { holes: holes, r: r };
+  }
+
+  function recompute() {
+    var inp = readInputs();
+    if (inp.error) { el.error.textContent = inp.error; return; }
+    el.error.textContent = "";
+    state.holes = inp.holes; state.r = inp.r;
+    state.res = solve(state.policy, inp.holes, inp.r);
+    stop();
+    state.k = state.res.steps.length - 1;
+    draw();
+  }
+
+  function cell(size, cls, cap) {
+    return '<div class="cell ' + cls + '"><div class="node">' + size + ' K</div><div class="cap">' + cap + '</div></div>';
+  }
+  function chain(cells) { return cells.join('<span class="link" aria-hidden="true"></span>'); }
+
+  function draw() {
+    var h = state.holes, r = state.r, res = state.res, steps = res.steps, k = state.k, s = steps[k];
+    var pol = policyById(state.policy), fin = !!s.final;
+    var scanLimit = fin ? s.scanned : s.i;
+
+    el.algoHead.innerHTML = "<strong>" + pol.name + "</strong><span>" + pol.desc + "</span>";
+    Array.prototype.forEach.call(el.tabs.children, function (b) {
+      b.setAttribute("aria-selected", b.dataset.id === state.policy ? "true" : "false");
+    });
+
+    // before
+    var bc = h.map(function (size, j) {
+      var cls = "", cap = "not examined";
+      if (j <= scanLimit) {
+        if (size >= r) { cap = "fits"; } else { cap = "too small"; cls = "small"; }
+      }
+      if (!fin && j === s.i) { cls = "exam"; cap = "examining"; }
+      if (j === s.best) {
+        if (!(j === s.i && !fin)) { cls = "best" + (fin ? " chosen" : ""); cap = fin ? "chosen" : "best so far"; }
+      }
+      return cell(size, cls, cap);
+    });
+    el.before.innerHTML = chain(bc);
+
+    // request
+    el.request.innerHTML = cell(r, "req", "request");
+
+    // after
+    var chosen = res.chosen;
+    if (!fin) {
+      el.after.innerHTML = '<span class="placeholder">Finish the search to see the updated list.</span>';
+      el.verdict.className = "verdict"; el.verdict.textContent = "Searching: " + s.msg;
+      el.stats.textContent = "";
+    } else {
+      var ac = [];
+      h.forEach(function (size, j) {
+        if (j === chosen) { if (res.rem > 0) ac.push(cell(res.rem, "rem", "remainder")); }
+        else ac.push(cell(size, "", ""));
+      });
+      el.after.innerHTML = ac.length ? chain(ac) : '<span class="placeholder">The free list is now empty.</span>';
+      el.verdict.className = "verdict " + (chosen >= 0 ? "good" : "badv");
+      el.verdict.textContent = s.msg;
+      var a = res.after, tot = a.reduce(function (x, y) { return x + y; }, 0), big = a.length ? Math.max.apply(null, a) : 0;
+      el.stats.textContent = "After allocation: " + a.length + " hole" + (a.length === 1 ? "" : "s") + ", " + tot + " K free in total, largest hole " + big + " K.";
+    }
+
+    // trace
+    el.trace.innerHTML = steps.map(function (st, i) {
+      var cls = i > k ? "future" : (i === k ? "cur" : "");
+      var tag = st.final ? "Result" : "Hole " + (st.i + 1);
+      return '<li class="' + cls + '"><span class="tag">' + tag + '</span><span>' + st.msg + '</span></li>';
+    }).join("");
+
+    // comparison
+    el.cmp.innerHTML = POLICIES.map(function (p) {
+      var rr = solve(p.id, h, r);
+      var chosenTxt = rr.chosen >= 0 ? h[rr.chosen] + " K (hole " + (rr.chosen + 1) + ")" : "none fits";
+      var remTxt = rr.chosen >= 0 ? rr.rem + " K" : "\u2013";
+      var after = rr.after.length ? rr.after.map(function (x) { return x + " K"; }).join(" \u2192 ") : "empty";
+      return '<tr class="pick' + (p.id === state.policy ? " sel" : "") + '" data-id="' + p.id + '" tabindex="0">' +
+        '<td><strong>' + p.name + '</strong></td><td class="num">' + chosenTxt + '</td><td class="num">' + remTxt + '</td><td class="num">' + after + '</td></tr>';
+    }).join("");
+
+    // buttons
+    el.play.textContent = state.timer ? "Pause" : (k >= steps.length - 1 ? "Replay" : "Play");
+    el.back.disabled = k === 0;
+    el.next.disabled = k >= steps.length - 1;
+    el.useResult.disabled = !(res.chosen >= 0 && res.after.length);
+  }
+
+  function stop() { if (state.timer) { clearInterval(state.timer); state.timer = 0; } }
+  function tick() {
+    if (state.k < state.res.steps.length - 1) state.k++;
+    if (state.k >= state.res.steps.length - 1) stop();
+    draw();
+  }
+  function play() {
+    if (state.k >= state.res.steps.length - 1) state.k = 0;
+    stop();
+    state.timer = setInterval(tick, 1000 / parseFloat(el.speed.value));
+    draw();
+  }
+
+  POLICIES.forEach(function (p) {
+    var b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "tab"); b.dataset.id = p.id; b.textContent = p.name;
+    b.addEventListener("click", function () { state.policy = p.id; recompute(); });
+    el.tabs.appendChild(b);
+  });
+  function pickRow(e) {
+    var tr = e.target.closest("tr[data-id]");
+    if (tr) { state.policy = tr.dataset.id; recompute(); }
+  }
+  el.cmp.addEventListener("click", pickRow);
+  el.cmp.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickRow(e); } });
+
+  el.holes.addEventListener("input", recompute);
+  el.req.addEventListener("input", recompute);
+  el.play.addEventListener("click", function () { if (state.timer) { stop(); draw(); } else play(); });
+  el.next.addEventListener("click", function () { stop(); if (state.k < state.res.steps.length - 1) state.k++; draw(); });
+  el.back.addEventListener("click", function () { stop(); if (state.k > 0) state.k--; draw(); });
+  el.reset.addEventListener("click", function () { stop(); state.k = 0; draw(); });
+  el.finish.addEventListener("click", function () { stop(); state.k = state.res.steps.length - 1; draw(); });
+  el.speed.addEventListener("input", function () { if (state.timer) play(); });
+  el.useResult.addEventListener("click", function () {
+    if (state.res.chosen < 0 || !state.res.after.length) return;
+    el.holes.value = state.res.after.join(", ");
+    recompute();
+  });
+  el.example.addEventListener("click", function () {
+    el.holes.value = "22, 10, 5, 30, 7, 20"; el.req.value = 15; state.policy = "best"; recompute();
+  });
+
+  recompute();
+})();
+</script>
+</body>
+</html>

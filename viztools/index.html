@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OSBC VizTools</title>
+<style>
+  /* OSBC VizTools shared theme: identical in every visualization */
+  :root {
+    --bg: #eef2f6; --panel: #ffffff; --ink: #101c2b; --muted: #5a6879;
+    --line: #cbd5e1; --line-strong: #94a3b8; --soft: #f4f7fa;
+    --accent: #1d4ed8; --accent-ink: #ffffff; --accent-soft: #e0e8fb;
+    --focus: #b45309; --focus-soft: #fbeed9;
+    --safe: #0f766e; --safe-soft: #d9f0ec;
+    --bad: #b42318; --bad-soft: #fbe1de;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    color-scheme: light;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c131c; --panel: #121c28; --ink: #e6edf5; --muted: #93a3b5;
+      --line: #26364a; --line-strong: #3f5370; --soft: #0f1823;
+      --accent: #6ea0ff; --accent-ink: #08111f; --accent-soft: #1b2a4a;
+      --focus: #f5a524; --focus-soft: #3a2d15;
+      --safe: #2dd4bf; --safe-soft: #10332f;
+      --bad: #ff8a7a; --bad-soft: #40211f;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c131c; --panel: #121c28; --ink: #e6edf5; --muted: #93a3b5;
+    --line: #26364a; --line-strong: #3f5370; --soft: #0f1823;
+    --accent: #6ea0ff; --accent-ink: #08111f; --accent-soft: #1b2a4a;
+    --focus: #f5a524; --focus-soft: #3a2d15;
+    --safe: #2dd4bf; --safe-soft: #10332f;
+    --bad: #ff8a7a; --bad-soft: #40211f;
+    color-scheme: dark;
+  }
+  :root { --guide: color-mix(in srgb, var(--ink) 13%, transparent); }
+  .back { display: inline-block; margin-bottom: 10px; font-size: .85rem; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--accent); text-decoration: underline; }
+  .back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 36px 20px 56px; }
+  h1 { margin: 0 0 6px; font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.1rem); line-height: 1.15; letter-spacing: -.02em; font-weight: 700; }
+  .lede { margin: 0 0 8px; color: var(--muted); max-width: 62ch; }
+  section.chapter { margin-top: 28px; }
+  section.chapter h2 { margin: 0 0 12px; font-size: 1.15rem; font-weight: 650; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .item {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px;
+  }
+  .item h3 { margin: 0 0 3px; font-size: 1.05rem; }
+  .item p { margin: 0 0 8px; color: var(--muted); font-size: .9rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags span { font-family: var(--mono); font-size: .75rem; padding: 2px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--soft); }
+  .tags .file { color: var(--accent); border-color: var(--accent); }
+  .open {
+    text-decoration: none; font-weight: 600; font-size: .9rem; padding: 8px 16px; border-radius: 7px;
+    background: var(--accent); color: var(--accent-ink); white-space: nowrap;
+  }
+  .open:hover { filter: brightness(1.08); }
+  .open:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .empty { margin-top: 28px; color: var(--muted); font-size: .88rem; }
+  @media (max-width: 560px) {
+    .item { grid-template-columns: minmax(0, 1fr); }
+    .open { justify-self: start; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>OSBC VizTools</h1>
+  <p class="lede">Operating systems visualizations, grouped by textbook chapter. Keep this file in the same folder as the tool files so the links work.</p>
+  <div id="chapters"></div>
+  <p class="empty">New visualizations are added under their chapter as they are created.</p>
+</div>
+<script>
+  // Add new chapters and tools here. "file" is the tool's HTML file in the same folder.
+  var CHAPTERS = [
+    {
+      title: "Chapter 4: Memory Management",
+      items: [
+        {
+          title: "Banker's algorithm simulator",
+          desc: "Edit the system state, check whether it is safe, or submit a resource request and step through the safety and resource-request algorithms line by line.",
+          tags: ["Deadlock avoidance", "Safety algorithm", "Resource request"],
+          file: "bankers.html"
+        },
+        {
+          title: "Memory allocation strategies",
+          desc: "Shows the free list before and after a request, and steps through how each placement policy picks a hole.",
+          tags: ["Best Fit", "Worst Fit", "First Fit"],
+          file: "memory-allocation.html"
+        }
+      ]
+    },
+    {
+      title: "Chapter 5: Disk Scheduling",
+      items: [
+        {
+          title: "Disk scheduling visualizer",
+          desc: "Animates head movement across tracks, shows the order of service, and works out the seek count step by step.",
+          tags: ["FCFS", "SSTF", "SCAN", "N-Step SCAN", "CSCAN", "LOOK", "CLOOK"],
+          file: "disk-scheduling.html"
+        }
+      ]
+    }
+  ];
+
+  var root = document.getElementById("chapters");
+  CHAPTERS.forEach(function (ch) {
+    var sec = document.createElement("section");
+    sec.className = "chapter";
+    var h2 = document.createElement("h2"); h2.textContent = ch.title; sec.appendChild(h2);
+    var ul = document.createElement("ul"); ul.className = "list";
+    ch.items.forEach(function (it) {
+      var li = document.createElement("li"); li.className = "item";
+      var body = document.createElement("div");
+      var h3 = document.createElement("h3"); h3.textContent = it.title;
+      var p = document.createElement("p"); p.textContent = it.desc;
+      var tags = document.createElement("div"); tags.className = "tags";
+      var f = document.createElement("span"); f.className = "file"; f.textContent = it.file; tags.appendChild(f);
+      it.tags.forEach(function (t) { var s = document.createElement("span"); s.textContent = t; tags.appendChild(s); });
+      body.appendChild(h3); body.appendChild(p); body.appendChild(tags);
+      var a = document.createElement("a");
+      a.className = "open"; a.href = it.file; a.textContent = "Open tool";
+      a.setAttribute("aria-label", "Open " + it.title);
+      li.appendChild(body); li.appendChild(a);
+      ul.appendChild(li);
+    });
+    sec.appendChild(ul);
+    root.appendChild(sec);
+  });
+</script>
+</body>
+</html>
