@@ -1,0 +1,107 @@
+{
+  "title": "CMSC 215 GH (PC LAB 1)",
+  "stageLabel": "Front",
+  "aisleLabel": "Aisle",
+  "blocks": [
+    {
+      "cols": 2,
+      "rows": 4,
+      "breaks": []
+    },
+    {
+      "cols": 2,
+      "rows": 4,
+      "breaks": []
+    }
+  ],
+  "roster": [
+    {
+      "id": "s1",
+      "name": "BELTRAN ELYSSE SAMANTHA TONGSON",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s2",
+      "name": "ASINGUA VIA ROSE P",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s3",
+      "name": "DELA CRUZ SHANMYKEL S",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s4",
+      "name": "ALCANTARA VICTOR PUA",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s5",
+      "name": "SUMBONG JOSEPH VICTOR SORNILLO",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s6",
+      "name": "ARIAS JAREM THIMOTY MAGUGAT",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s7",
+      "name": "ESPINOCILLA EMMANUEL SALES",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s8",
+      "name": "DELOS SANTOS MILKY LOREJO",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s9",
+      "name": "CERDANIO SAMUEL JOHN CORRES",
+      "section": "",
+      "batch": 0
+    },
+    {
+      "id": "s10",
+      "name": "BERCES MICO ANDREI VALDEPEÑA",
+      "section": "",
+      "batch": 0
+    }
+  ],
+  "batches": [
+    {
+      "name": "All students",
+      "order": "random",
+      "seed": "58578"
+    }
+  ],
+  "seats": {
+    "0-2-1": "s8",
+    "0-2-2": "s5",
+    "1-2-1": "s6",
+    "1-2-2": "s4",
+    "0-3-1": "s9",
+    "0-3-2": "s1",
+    "1-3-1": "s7",
+    "1-3-2": "s3",
+    "0-4-1": "s10",
+    "0-4-2": "s2"
+  },
+  "off": {
+    "0-1-1": true,
+    "0-1-2": true,
+    "1-1-1": true,
+    "1-1-2": true
+  },
+  "pins": {},
+  "seatOrder": "row",
+  "view": "audience"
+}
